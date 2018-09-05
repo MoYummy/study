@@ -78,10 +78,10 @@ rcBuildPolyMeshDetail
 |  Recast (rcConfig)   | `Unity` | `A*` |
 |:---------------------|:------|:---|
 |cs                    |`max(0.01f,cellSize)`|`max(cellSize,0.001F)`|
-|ch                    |`max(cs*0.5f,(agentHeight+agentClimb)/255.0f,(bmax-bmin)/65536.0f)`|`max(forcedBoundsSize.y/64000, 0.001f)`|
+|ch                    |`max(cs*0.5f,`<br>`(agentHeight+agentClimb)/255.0f,`<br>`(bmax-bmin)/65536.0f)`|`max(forcedBoundsSize.y/64000, 0.001f)`|
 |walkableSlopeAngle    |`clamp(agentSlope, 0.1f, 90.0f)`|`maxSlope`|
-|walkableHeight        |`agentHeight/ch`|`max(walkableHeight,0)`|
-|walkableClimb         |`agentClimb/ch`|`min(walkableClimb, walkableHeight)`|
+|walkableHeight        |`agentHeight/ch`|`max(walkableHeight,0)`<br>`voxelWalkableHeight=walkableHeight/cellHeight`|
+|walkableClimb         |`agentClimb/ch`|`min(walkableClimb, walkableHeight)`<br>`voxelWalkableClimb=round(walkableClimb/cellHeight)`|
 |walkableRadius        |`ceilf(agentRadius/cs-cs*0.01f)`|`voxelCharacterRadius`<br>`=CharacterRadiusInVoxels`<br>`=ceil((characterRadius/cellSize)-0.1f)`|
 |maxEdgeLen            |`0`|`maxEdgeLength/cellSize`|
 |maxSimplificationError|`1.3f`|`contourMaxError`|
