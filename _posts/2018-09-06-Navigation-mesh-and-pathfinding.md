@@ -169,7 +169,6 @@ namespace Pathfinding {
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.AI;
-using Pathfinding.Serialization;
 
 namespace Pathfinding
 {
@@ -191,7 +190,7 @@ namespace Pathfinding
 				return;
 			}
 
-			ResetNavMeshSurface(recast, ref surface);
+			ConfigNavMeshSurface(recast, ref surface);
 			surface.BuildNavMesh();
 		}
 
@@ -234,7 +233,7 @@ namespace Pathfinding
 			return surface;
 		}
 
-		void ResetNavMeshSurface(RecastGraph recast, ref NavMeshSurface surface)
+		void ConfigNavMeshSurface(RecastGraph recast, ref NavMeshSurface surface)
 		{
 			#region set agent
 			var agentTypeID = int.MaxValue;
