@@ -86,18 +86,14 @@ rcBuildPolyMeshDetail
 |maxEdgeLen            |`0`|`maxEdgeLength/cellSize`|
 |maxSimplificationError|`1.3f`|`contourMaxError`|
 |minRegionArea         |`minRegionArea/(cs*cs))`|`minRegionSize/(cellSize*cellSize)`|
-|tileSize              |`256*cs`|`editorTileSize`|
+|tileSize              |`tileSize`|`editorTileSize`|
 |mergeRegionArea       |`400`|`-`|
 |maxVertsPerPoly       |`6`|`3`|
 |detailSampleDist      |`cs*6.0f`|`-`|
 |detailSampleMaxError  |`ch*1.0`|`-`|
 |borderSize            |`walkableRadius+3`|`voxelCharacterRadius+3`|
 
-tileSize(cs=0.15)实测:
-+ scale=5的plane，`Unity`为16个顶点和8个面，`A*`设为166时一致，`A*`设为165时为30个顶点和14个面。
-+ scale=10的plane，`Unity`为64个顶点和32个面，`A*`设为166时一致，`A*`设为165时为100个顶点和50个面。
-+ scale=20的plane，`Unity`为144个顶点和72个面，`A*`设为222时一致，`A*`设为221时为196个顶点和98个面。
-+ scale=40的plane，`Unity`为576个顶点和288个面，`A*`设为222时一致，`A*`设为221时为676个顶点和338个面。
+注：`Unity`和`A*`在`borderSize`使用的方式略有差异，因此在整个区域的最外的边界部分有可能不一致，会导致相同参数下`Unity`比`A*`面数多、顶点多。
 
 <details><summary>NavMeshData</summary>
 
@@ -144,6 +140,163 @@ public class NavMeshData
 ~~~
 </details>
 
+<details><summary>ScanFromUnity</summary>
+需要搭配 https://github.com/Unity-Technologies/NavMeshComponents
+
+~~~
+using UnityEngine;
+using UnityEditor;
+using System.Collections.Generic;
+using System.Reflection;
+
+namespace Pathfinding {
+	[CustomEditor(typeof(AstarPath))]
+	public partial class AstarPathEditor : Editor {
+
+...
+
+			if (GUILayout.Button(new GUIContent("Scan", "Recaculate all graphs. Shortcut cmd+alt+s ( ctrl+alt+s on windows )"))) {
+				MenuScan();
+			}
+			if (GUILayout.Button(new GUIContent("Scan from unity", ""))) {
+				MenuScanFromUnity();
+			}
+
+...
+~~~
+
+~~~
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.AI;
+using Pathfinding.Serialization;
+
+namespace Pathfinding
+{
+	public partial class AstarPathEditor : Editor
+	{
+		void MenuScanFromUnity()
+		{
+			var recast = GetRecastGraph(); // multiple recast graph not supported
+			if (recast == null)
+			{
+				Debug.LogError("Recast graph not found.");
+				return;
+			}
+
+			var surface = GetNavMeshSurface();
+			if (surface == null)
+			{
+				Debug.LogError("NavMesh Surface invalid.");
+				return;
+			}
+
+			ResetNavMeshSurface(recast, ref surface);
+			surface.BuildNavMesh();
+		}
+
+		RecastGraph GetRecastGraph()
+		{
+			if (AstarPath.active == null || AstarPath.active.data == null)
+			{
+				return null;
+			}
+
+			if (AstarPath.active.data.recastGraph != null)
+			{
+				return AstarPath.active.data.recastGraph;
+			}
+
+			if (AstarPath.active.data.graphs != null)
+			{
+				foreach (var graph in AstarPath.active.data.graphs)
+				{
+					var isRecast = (graph.GetType() == typeof(RecastGraph) || graph.GetType().IsSubclassOf(typeof(RecastGraph)));
+					if (isRecast)
+					{
+						return graph as RecastGraph;
+					}
+				}
+			}
+
+			return null;
+		}
+
+		NavMeshSurface GetNavMeshSurface()
+		{
+			var astar = FindObjectOfType<AstarPath>();
+			var surface = astar.GetComponent<NavMeshSurface>();
+			if (surface == null)
+			{
+				surface = astar.gameObject.AddComponent<NavMeshSurface>();
+			}
+
+			return surface;
+		}
+
+		void ResetNavMeshSurface(RecastGraph recast, ref NavMeshSurface surface)
+		{
+			#region set agent
+			var agentTypeID = int.MaxValue;
+			var count = NavMesh.GetSettingsCount();
+			for (var i = 0; i < count; i++)
+			{
+				var settings = NavMesh.GetSettingsByIndex(i);
+				if (Mathf.Abs(settings.agentRadius - recast.characterRadius) > Mathf.Epsilon)
+				{
+					continue;
+				}
+				if (Mathf.Abs(settings.agentHeight - recast.walkableHeight) > Mathf.Epsilon)
+				{
+					continue;
+				}
+				if (Mathf.Abs(settings.agentClimb - recast.walkableClimb) > Mathf.Epsilon)
+				{
+					continue;
+				}
+				if (Mathf.Abs(settings.agentSlope - recast.maxSlope) > Mathf.Epsilon)
+				{
+					continue;
+				}
+				agentTypeID = settings.agentTypeID;
+			}
+			if (agentTypeID == int.MaxValue)
+			{
+				var settings = NavMesh.CreateSettings();
+				settings.agentRadius = recast.characterRadius;
+				settings.agentHeight = recast.walkableHeight;
+				settings.agentClimb = recast.walkableClimb;
+				settings.agentSlope = recast.maxSlope;
+				agentTypeID = settings.agentTypeID;
+			}
+			surface.agentTypeID = agentTypeID;
+			#endregion
+
+			surface.collectObjects = CollectObjects.Volume;
+			surface.size = recast.forcedBoundsSize;
+			surface.center = recast.forcedBoundsCenter;
+			surface.layerMask = recast.mask;
+			surface.useGeometry = NavMeshCollectGeometry.RenderMeshes;
+			if (recast.rasterizeColliders)
+			{
+				surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+			}
+
+			#region TODO: set area
+			// RecastMeshObj?
+			#endregion
+
+			surface.overrideVoxelSize = true;
+			surface.voxelSize = recast.cellSize;
+			surface.overrideTileSize = true;
+			//surface.tileSize = Mathf.FloorToInt(recast.editorTileSize / surface.voxelSize);
+			surface.tileSize = recast.editorTileSize;
+		}
+	}
+}
+~~~
+
+</details>
 
 ### 参考文献：
 
